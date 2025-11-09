@@ -1654,8 +1654,14 @@ class RTCSession extends EventManager implements Owner {
 
   Future<void> _createRTCConnection(Map<String, dynamic> pcConfig,
       Map<String, dynamic> rtcConstraints) async {
+    print('🔧🔧🔧 [RTCSession] _createRTCConnection() CALLED');
+    print('🔧🔧🔧 [RTCSession] pcConfig received: $pcConfig');
+    print('🔧🔧🔧 [RTCSession] iceServers: ${pcConfig['iceServers']}');
     _connection = await createPeerConnection(pcConfig, rtcConstraints);
+    print('🔧🔧🔧 [RTCSession] createPeerConnection() completed');
     _connection!.onIceConnectionState = (RTCIceConnectionState state) {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+
       if (_state == RtcSessionState.terminated ||
           _state == RtcSessionState.canceled) {
         logger.d(
@@ -1665,6 +1671,10 @@ class RTCSession extends EventManager implements Owner {
       }
 
       if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('❌ [ICE] State: FAILED');
+        print('   타임스탬프: $timestamp');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         logger.e('ICE Connection State Failed.');
         _iceDisconnectTimer?.cancel();
         terminate(<String, dynamic>{
@@ -1674,6 +1684,10 @@ class RTCSession extends EventManager implements Owner {
         });
       } else if (state ==
           RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('⚠️ [ICE] State: DISCONNECTED');
+        print('   타임스탬프: $timestamp');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         logger.w('ICE Connection State Disconnected.');
         if (_iceDisconnectTimer == null && !_isAttemptingIceRestart) {
           logger.i('Starting ICE disconnect timer...');
@@ -1699,6 +1713,11 @@ class RTCSession extends EventManager implements Owner {
       } else if (state ==
               RTCIceConnectionState.RTCIceConnectionStateConnected ||
           state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('✅ [ICE] State: ${state == RTCIceConnectionState.RTCIceConnectionStateConnected ? "CONNECTED" : "COMPLETED"}');
+        print('   타임스탬프: $timestamp');
+        print('   🎉 음성 연결 가능!');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         // If connection recovers, cancel timer and reset flag
         if (_iceDisconnectTimer != null || _isAttemptingIceRestart) {
           logger.i(
@@ -1709,6 +1728,10 @@ class RTCSession extends EventManager implements Owner {
           logger.i('ICE Connection State Connected/Completed.');
         }
       } else if (state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('🔒 [ICE] State: CLOSED');
+        print('   타임스탬프: $timestamp');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         // Connection closed locally, usually via _connection.close() called by terminate()
         logger.i('ICE Connection State Closed.'); // Use logger.i
         _iceDisconnectTimer?.cancel(); // Ensure timer is cancelled
@@ -1724,8 +1747,18 @@ class RTCSession extends EventManager implements Owner {
           });
         }
       } else if (state == RTCIceConnectionState.RTCIceConnectionStateChecking) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('🔍 [ICE] State: CHECKING');
+        print('   타임스탬프: $timestamp');
+        print('   ⏳ ICE candidate 협상 중...');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         logger.d('ICE Connection State Checking...'); // Use logger.d
       } else if (state == RTCIceConnectionState.RTCIceConnectionStateNew) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('🆕 [ICE] State: NEW');
+        print('   타임스탬프: $timestamp');
+        print('   📋 ICE 초기화됨');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         logger.d('ICE Connection State New.'); // Use logger.d
       }
     };
@@ -1828,8 +1861,22 @@ class RTCSession extends EventManager implements Owner {
       }
     }
 
+    int candidateCount = 0;
+    int? firstCandidateTime;
+
     _connection!.onIceGatheringState = (RTCIceGatheringState state) {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       _iceGatheringState = state;
+
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('📡 [ICE Gathering] State: ${state.name}');
+      print('   타임스탬프: $timestamp');
+      print('   수집된 candidate: $candidateCount개');
+      if (firstCandidateTime != null) {
+        print('   첫 candidate 이후: ${timestamp - firstCandidateTime!}ms');
+      }
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (state == RTCIceGatheringState.RTCIceGatheringStateComplete) {
         ready();
       }
@@ -1838,9 +1885,25 @@ class RTCSession extends EventManager implements Owner {
     bool hasCandidate = false;
     _connection!.onIceCandidate = (RTCIceCandidate candidate) {
       if (candidate != null) {
-        emit(EventIceCandidate(candidate, ready));
+        candidateCount++;
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+        // Candidate 타입 추출 (host, srflx, relay)
+        final candidateStr = candidate.candidate ?? '';
+        final parts = candidateStr.split(' ');
+        final candidateType = parts.length > 7 ? parts[7] : 'unknown';
+
         if (!hasCandidate) {
           hasCandidate = true;
+          firstCandidateTime = timestamp;
+
+          print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          print('🎯 [ICE] 첫 번째 Candidate 수집');
+          print('   타임스탬프: $timestamp');
+          print('   Type: $candidateType');
+          print('   Timeout: ${ua.configuration.ice_gathering_timeout}ms 후 SDP 전송');
+          print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
           /**
            *  Just wait for 0.5 seconds. In the case of multiple network connections,
            *  the RTCIceGatheringStateComplete event needs to wait for 10 ~ 30 seconds.
@@ -1850,7 +1913,15 @@ class RTCSession extends EventManager implements Owner {
           if (ua.configuration.ice_gathering_timeout != 0) {
             setTimeout(() => ready(), ua.configuration.ice_gathering_timeout);
           }
+        } else {
+          // 후속 candidate 수집 로깅
+          final elapsedMs = firstCandidateTime != null
+              ? timestamp - firstCandidateTime!
+              : 0;
+          print('   📌 [ICE] Candidate #$candidateCount: $candidateType (+${elapsedMs}ms)');
         }
+
+        emit(EventIceCandidate(candidate, ready));
       }
     };
 
