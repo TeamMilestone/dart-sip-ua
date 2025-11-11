@@ -129,6 +129,9 @@ class UA extends EventManager {
 
   TransactionBag get transactions => _transactions;
 
+  /// Expose registrator for RFC 8599 support (setExtraContactUriParams)
+  Registrator get registrator => _registrator;
+
   // Flag that indicates whether UA is currently stopping
   bool _stopping = false;
 
@@ -207,13 +210,6 @@ class UA extends EventManager {
 
     return Subscriber(this, target, eventName, accept, expires, contentType,
         allowEvents, requestParams, extraHeaders);
-  }
-
-  /**
-   * Get the Registrator instance.
-   */
-  Registrator? registrator() {
-    return _registrator;
   }
 
   /**

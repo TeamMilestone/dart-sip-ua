@@ -649,33 +649,38 @@ class RTCSession extends EventManager implements Owner {
       }
     }
 
-    // Set remote description.
-    if (_late_sdp) return;
+    // TODO(cloudwebrtc): Is this event already useful?
+    _connecting(request);
 
-    logger.d('emit "sdp"');
-    final String? processedSDP = _sdpOfferToWebRTC(request.body);
-    emit(EventSdp(
-        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP));
+    // Set remote description and create local description based on SDP negotiation type
+    if (!_late_sdp) {
+      // Early SDP: INVITE has SDP offer
+      // We need to setRemoteDescription(offer) and createAnswer()
+      logger.d('emit "sdp"');
+      final String? processedSDP = _sdpOfferToWebRTC(request.body);
+      emit(EventSdp(
+          originator: Originator.remote, type: SdpType.offer, sdp: processedSDP));
 
-    RTCSessionDescription offer =
-        RTCSessionDescription(processedSDP, SdpType.offer.name);
-    try {
-      await _connection!.setRemoteDescription(offer);
-    } catch (error) {
-      request.reply(488);
-      _failed(
-          Originator.system,
-          null,
-          null,
-          null,
-          488,
-          DartSIP_C.CausesType.WEBRTC_ERROR,
-          'SetRemoteDescription(offer) failed');
-      logger.e(
-          'emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
-      emit(EventSetRemoteDescriptionFailed(exception: error));
-      throw Exceptions.TypeError(
-          'peerconnection.setRemoteDescription() failed');
+      RTCSessionDescription offer =
+          RTCSessionDescription(processedSDP, SdpType.offer.name);
+      try {
+        await _connection!.setRemoteDescription(offer);
+      } catch (error) {
+        request.reply(488);
+        _failed(
+            Originator.system,
+            null,
+            null,
+            null,
+            488,
+            DartSIP_C.CausesType.WEBRTC_ERROR,
+            'SetRemoteDescription(offer) failed');
+        logger.e(
+            'emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
+        emit(EventSetRemoteDescriptionFailed(exception: error));
+        throw Exceptions.TypeError(
+            'peerconnection.setRemoteDescription() failed');
+      }
     }
 
     // Create local description.
@@ -683,8 +688,6 @@ class RTCSession extends EventManager implements Owner {
       throw Exceptions.InvalidStateError('terminated');
     }
 
-    // TODO(cloudwebrtc): Is this event already useful?
-    _connecting(request);
     RTCSessionDescription desc;
     try {
       if (!_late_sdp) {

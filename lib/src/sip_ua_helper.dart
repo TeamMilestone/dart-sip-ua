@@ -84,6 +84,15 @@ class SIPUAHelper extends EventManager {
     _ua!.register();
   }
 
+  /// Set extra Contact URI parameters for REGISTER (RFC 8599 support)
+  /// Allows dynamic modification of pn-* parameters without restarting UA
+  /// This maintains Contact URI stability while updating push notification params
+  void setExtraContactUriParams(Map<String, dynamic>? extraContactUriParams) {
+    assert(_ua != null,
+        'setExtraContactUriParams called but not started, you must call start first.');
+    _ua!.registrator.setExtraContactUriParams(extraContactUriParams);
+  }
+
   Future<bool> unregister([bool all = true]) async {
     if (_ua != null) {
       assert(registered, 'ERROR: you must call register first.');
