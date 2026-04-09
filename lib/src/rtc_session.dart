@@ -1798,7 +1798,9 @@ class RTCSession extends EventManager implements Owner {
   Future<RTCSessionDescription> _createLocalDescription(
       SdpType type, Map<String, dynamic>? constraints) async {
     logger.d('createLocalDescription()');
-    _iceGatheringState ??= RTCIceGatheringState.RTCIceGatheringStateNew;
+    // ICE Restart 시 이전 상태가 Complete이면 candidate 없이 즉시 반환되는 문제 수정
+    // 항상 New로 리셋하여 ICE gathering을 기다리도록 함
+    _iceGatheringState = RTCIceGatheringState.RTCIceGatheringStateNew;
     Completer<RTCSessionDescription> completer =
         Completer<RTCSessionDescription>();
 
@@ -2777,6 +2779,10 @@ class RTCSession extends EventManager implements Owner {
    */
   void _sendReinvite([Map<String, dynamic>? options]) async {
     logger.d('sendReinvite()');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    print('🔄 [Re-INVITE] _sendReinvite() 시작');
+    print('   rtcOfferConstraints: ${options?['rtcOfferConstraints']}');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     options = options ?? <String, dynamic>{};
 
@@ -2799,18 +2805,37 @@ class RTCSession extends EventManager implements Owner {
     }
 
     void onFailed([dynamic response]) {
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('❌ [Re-INVITE] onFailed() 호출됨');
+      print('   Response: $response');
+      print('   Response type: ${response?.runtimeType}');
+      if (response != null && response is IncomingResponse) {
+        print('   Status code: ${response.status_code}');
+        print('   Reason phrase: ${response.reason_phrase}');
+      }
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       eventHandlers.emit(EventCallFailed(session: this, response: response));
     }
 
     void onSucceeded(IncomingResponse? response) async {
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('✅ [Re-INVITE] onSucceeded() 호출됨');
+      print('   Status code: ${response?.status_code}');
+      print('   Session state: $_state');
+      print('   succeeded flag: $succeeded');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (_state == RtcSessionState.terminated) {
+        print('⚠️ [Re-INVITE] Session terminated, 무시');
         return;
       }
 
       sendRequest(SipMethod.ACK);
+      print('✅ [Re-INVITE] ACK 전송됨');
 
       // If it is a 2XX retransmission exit now.
-      if (succeeded != null) {
+      if (succeeded) {
+        print('⚠️ [Re-INVITE] 2XX 재전송, 무시');
         return;
       }
 
@@ -2819,13 +2844,16 @@ class RTCSession extends EventManager implements Owner {
 
       // Must have SDP answer.
       if (response!.body == null || response.body!.isEmpty) {
+        print('❌ [Re-INVITE] SDP body 없음!');
         onFailed();
         return;
       } else if (response.getHeader('Content-Type') != 'application/sdp') {
+        print('❌ [Re-INVITE] Content-Type이 application/sdp 아님: ${response.getHeader('Content-Type')}');
         onFailed();
         return;
       }
 
+      print('✅ [Re-INVITE] SDP Answer 수신, setRemoteDescription 시도...');
       logger.d('emit "sdp"');
       emit(EventSdp(
         originator: Originator.remote,
@@ -2838,8 +2866,10 @@ class RTCSession extends EventManager implements Owner {
 
       try {
         await _connection!.setRemoteDescription(answer);
+        print('✅ [Re-INVITE] setRemoteDescription 성공!');
         eventHandlers.emit(EventSucceeded(response: response));
       } catch (error) {
+        print('❌ [Re-INVITE] setRemoteDescription 실패: $error');
         onFailed();
         logger.e(
             'emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
@@ -2848,8 +2878,10 @@ class RTCSession extends EventManager implements Owner {
     }
 
     try {
+      print('🔄 [Re-INVITE] createLocalDescription 시작...');
       RTCSessionDescription desc =
           await _createLocalDescription(SdpType.offer, rtcOfferConstraints);
+      print('✅ [Re-INVITE] createLocalDescription 완료');
       String? sdp = _mangleOffer(desc.sdp);
       logger.d('emit "sdp"');
       emit(EventSdp(
@@ -2857,28 +2889,40 @@ class RTCSession extends EventManager implements Owner {
 
       EventManager handlers = EventManager();
       handlers.on(EventOnSuccessResponse(), (EventOnSuccessResponse event) {
+        print('✅ [Re-INVITE] EventOnSuccessResponse 수신');
         onSucceeded(event.response as IncomingResponse?);
         succeeded = true;
       });
       handlers.on(EventOnErrorResponse(), (EventOnErrorResponse event) {
+        print('❌ [Re-INVITE] EventOnErrorResponse 수신: ${(event.response as IncomingResponse?)?.status_code}');
         onFailed(event.response);
       });
       handlers.on(EventOnTransportError(), (EventOnTransportError event) {
+        print('❌ [Re-INVITE] EventOnTransportError 수신');
         onTransportError(); // Do nothing because session ends.
       });
       handlers.on(EventOnRequestTimeout(), (EventOnRequestTimeout event) {
+        print('❌ [Re-INVITE] EventOnRequestTimeout 수신');
         onRequestTimeout(); // Do nothing because session ends.
       });
       handlers.on(EventOnDialogError(), (EventOnDialogError event) {
+        print('❌ [Re-INVITE] EventOnDialogError 수신');
         onDialogError(); // Do nothing because session ends.
       });
 
+      print('🔄 [Re-INVITE] INVITE 전송 중...');
       sendRequest(SipMethod.INVITE, <String, dynamic>{
         'extraHeaders': extraHeaders,
         'body': sdp,
         'eventHandlers': handlers
       });
+      print('✅ [Re-INVITE] INVITE 전송 완료');
     } catch (e, s) {
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('❌ [Re-INVITE] 예외 발생!');
+      print('   Error: $e');
+      print('   StackTrace: $s');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       logger.e(e.toString(), error: e, stackTrace: s);
       onFailed();
     }
@@ -3085,7 +3129,7 @@ class RTCSession extends EventManager implements Owner {
       _handleSessionTimersInIncomingResponse(response);
 
       // If it is a 2XX retransmission exit now.
-      if (succeeded != null) {
+      if (succeeded) {
         return;
       }
 
