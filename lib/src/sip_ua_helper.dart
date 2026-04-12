@@ -258,12 +258,27 @@ class SIPUAHelper extends EventManager {
         }
         bool hasVideo = session.data?['video'] ?? false;
 
+        // 수신 통화: SIP INVITE SDP에서 m=video 감지
+        if (!hasVideo && session.direction == Direction.incoming) {
+          try {
+            // session.request에서 SDP body 확인
+            final String? body = session.request?.body;
+            if (body != null && body.contains('m=video')) {
+              hasVideo = true;
+              session.data?['video'] = true;
+              logger.d('Incoming call has video (detected from SDP)');
+            }
+          } catch (e) {
+            logger.w('Failed to detect video from SDP: $e');
+          }
+        }
+
         _calls[event.id] =
             Call(event.id, session, CallStateEnum.CALL_INITIATION, !hasVideo);
         _notifyCallStateListeners(
             event,
             CallState(CallStateEnum.CALL_INITIATION,
-                video: session.data?['video']));
+                video: hasVideo));
       });
 
       _ua!.on(EventNewMessage(), (EventNewMessage event) {
