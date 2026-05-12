@@ -528,25 +528,28 @@ class RTCSession extends EventManager implements Owner {
     extraHeaders.insert(0, 'Contact: $_contact');
 
     // Determine incoming media from incoming SDP offer (if any).
-    Map<String, dynamic> sdp = request.parseSDP();
+    // RFC 3261 §13.2.1: offerless INVITE — we generate the offer in 200 OK (late offer).
+    if (!_late_sdp) {
+      Map<String, dynamic> sdp = request.parseSDP();
 
-    // Make sure sdp['media'] is an array, not the case if there is only one media.
-    if (sdp['media'] is! List) {
-      sdp['media'] = <dynamic>[sdp['media']];
-    }
-
-    // Go through all medias in SDP to find offered capabilities to answer with.
-    for (Map<String, dynamic> m in sdp['media']) {
-      if (m['type'] == 'audio') {
-        peerHasAudioLine = true;
-        if (m['direction'] == null || m['direction'] == 'sendrecv') {
-          peerOffersFullAudio = true;
-        }
+      // Make sure sdp['media'] is an array, not the case if there is only one media.
+      if (sdp['media'] is! List) {
+        sdp['media'] = <dynamic>[sdp['media']];
       }
-      if (m['type'] == 'video') {
-        peerHasVideoLine = true;
-        if (m['direction'] == null || m['direction'] == 'sendrecv') {
-          peerOffersFullVideo = true;
+
+      // Go through all medias in SDP to find offered capabilities to answer with.
+      for (Map<String, dynamic> m in sdp['media']) {
+        if (m['type'] == 'audio') {
+          peerHasAudioLine = true;
+          if (m['direction'] == null || m['direction'] == 'sendrecv') {
+            peerOffersFullAudio = true;
+          }
+        }
+        if (m['type'] == 'video') {
+          peerHasVideoLine = true;
+          if (m['direction'] == null || m['direction'] == 'sendrecv') {
+            peerOffersFullVideo = true;
+          }
         }
       }
     }
@@ -567,24 +570,35 @@ class RTCSession extends EventManager implements Owner {
       }
     }
 
-    // Set audio constraints based on incoming stream if not supplied.
-    if (mediaStream == null && mediaConstraints['audio'] == null) {
-      mediaConstraints['audio'] = peerOffersFullAudio;
-    }
+    if (_late_sdp) {
+      // Offerless INVITE (e.g. RFC 4579 conference dial-out): caller didn't advertise
+      // any m-lines, so default to audio-only unless caller of answer() overrides.
+      if (mediaStream == null && mediaConstraints['audio'] == null) {
+        mediaConstraints['audio'] = true;
+      }
+      if (mediaStream == null && mediaConstraints['video'] == null) {
+        mediaConstraints['video'] = false;
+      }
+    } else {
+      // Set audio constraints based on incoming stream if not supplied.
+      if (mediaStream == null && mediaConstraints['audio'] == null) {
+        mediaConstraints['audio'] = peerOffersFullAudio;
+      }
 
-    // Set video constraints based on incoming stream if not supplied.
-    if (mediaStream == null && mediaConstraints['video'] == null) {
-      mediaConstraints['video'] = peerOffersFullVideo;
-    }
+      // Set video constraints based on incoming stream if not supplied.
+      if (mediaStream == null && mediaConstraints['video'] == null) {
+        mediaConstraints['video'] = peerOffersFullVideo;
+      }
 
-    // Don't ask for audio if the incoming offer has no audio section.
-    if (mediaStream == null && !peerHasAudioLine) {
-      mediaConstraints['audio'] = false;
-    }
+      // Don't ask for audio if the incoming offer has no audio section.
+      if (mediaStream == null && !peerHasAudioLine) {
+        mediaConstraints['audio'] = false;
+      }
 
-    // Don't ask for video if the incoming offer has no video section.
-    if (mediaStream == null && !peerHasVideoLine) {
-      mediaConstraints['video'] = false;
+      // Don't ask for video if the incoming offer has no video section.
+      if (mediaStream == null && !peerHasVideoLine) {
+        mediaConstraints['video'] = false;
+      }
     }
 
     // Create a RTCPeerConnection instance.
