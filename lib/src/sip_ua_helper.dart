@@ -456,14 +456,43 @@ class SIPUAHelper extends EventManager {
     return _ua!.sendOptions(target, body, params);
   }
 
-  void subscribe(String target, String event, String contentType) {
-    Subscriber s = _ua!.subscribe(target, event, contentType);
+  /// Create and send a SUBSCRIBE request.
+  ///
+  /// Returns the [Subscriber] so callers can attach additional event handlers
+  /// (e.g. [EventTerminated]) and invoke [Subscriber.terminate] for an explicit
+  /// `Expires: 0` un-subscribe. NOTIFY bodies arrive via the global
+  /// [SipUaHelperListener.onNewNotify] callback as before.
+  ///
+  /// - [event]: SIP `Event` header value (e.g. `conference`, `presence`).
+  /// - [accept]: media type passed through to [Subscriber] (currently unused
+  ///   server-side; included for API parity with JsSIP).
+  /// - [expires]: subscription TTL in seconds; Subscriber auto-refreshes at
+  ///   ~50% of this interval.
+  /// - [extraHeaders]: e.g. `['Accept: application/conference-info+xml']`.
+  Subscriber subscribe(
+    String target,
+    String event,
+    String accept, {
+    int expires = 900,
+    List<String> extraHeaders = const <String>[],
+  }) {
+    Subscriber s = _ua!.subscribe(
+      target,
+      event,
+      accept,
+      expires,
+      null,
+      null,
+      const <String, dynamic>{},
+      extraHeaders,
+    );
 
     s.on(EventNotify(), (EventNotify event) {
       _notifyNotifyListeners(event);
     });
 
     s.subscribe();
+    return s;
   }
 
   void terminateSessions(Map<String, dynamic> options) {
