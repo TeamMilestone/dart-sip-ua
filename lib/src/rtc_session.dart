@@ -369,7 +369,14 @@ class RTCSession extends EventManager implements Owner {
     String? contentType = request.getHeader('Content-Type');
 
     // Check body and content type.
-    if (request.body != null && (contentType != 'application/sdp')) {
+    //
+    // ``IncomingMessage`` initialises ``body`` to ``''`` (empty
+    // string) — see ``sip_message.dart`` — so a bare ``body != null``
+    // check treats an offerless INVITE (RFC 3261 §13.2.1 / RFC 4579
+    // dial-out) as carrying a non-SDP body and 415s it. Only reject
+    // when a non-empty body is present without ``application/sdp``.
+    final bool _hasBody = request.body != null && request.body!.isNotEmpty;
+    if (_hasBody && (contentType != 'application/sdp')) {
       request.reply(415);
       return;
     }
@@ -405,7 +412,10 @@ class RTCSession extends EventManager implements Owner {
       return;
     }
 
-    if (request.body != null) {
+    // ``body`` is ``''`` (not null) for offerless INVITEs — see the
+    // ``_hasBody`` note above. Use the same emptiness check here so a
+    // late-offer INVITE actually takes the ``_late_sdp = true`` branch.
+    if (_hasBody) {
       _late_sdp = false;
     } else {
       _late_sdp = true;
@@ -2059,8 +2069,12 @@ class RTCSession extends EventManager implements Owner {
 
     _late_sdp = false;
 
-    // Request without SDP.
-    if (request.body == null) {
+    // Request without SDP. ``body`` is initialised to ``''`` (not null)
+    // by IncomingMessage, so a bare ``== null`` test misses offerless
+    // re-INVITEs and falls through to the 415 branch below.
+    final bool _hasReinviteBody =
+        request.body != null && request.body!.isNotEmpty;
+    if (!_hasReinviteBody) {
       _late_sdp = true;
 
       try {
@@ -2073,7 +2087,7 @@ class RTCSession extends EventManager implements Owner {
       return;
     }
 
-    // Request without SDP.
+    // Body present but not SDP — 415.
     if (contentType != 'application/sdp') {
       logger.d('invalid Content-Type');
       request.reply(415);
