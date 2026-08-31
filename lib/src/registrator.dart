@@ -236,10 +236,10 @@ class Registrator {
                 contact.getParam('pub-gruu').replaceAll('"', '');
           }
 
-          if (!_registered) {
-            _registered = true;
-            _ua.registered(response: event.response);
-          }
+          // JsSIP 원본과 동일하게 갱신 2xx 에도 매번 registered 를 발행한다.
+          // 앱 레벨 warm-stale 판정("마지막 REGISTERED 시각")의 전제.
+          _registered = true;
+          _ua.registered(response: event.response);
         } else
         // Interval too brief RFC3261 10.2.8.
         if (status_code.contains(RegExp(r'^423$'))) {

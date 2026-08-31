@@ -19,6 +19,15 @@ class SIPUAWebSocketImpl {
   OnMessageCallback? onMessage;
   OnCloseCallback? onClose;
   final int messageDelay;
+  bool _closeNotified = false;
+
+  // onError 후 onDone 이 이어져도 onClose 는 한 번만 전달한다.
+  void _notifyClose(int? code, String? reason) {
+    if (_closeNotified) return;
+    _closeNotified = true;
+    onClose?.call(code, reason);
+  }
+
   void connect(
       {Iterable<String>? protocols,
       required WebSocketSettings webSocketSettings}) async {
@@ -34,13 +43,19 @@ class SIPUAWebSocketImpl {
       }
 
       onOpen?.call();
+      // half-open(FIN 없는 단절) 소켓은 이벤트가 영영 오지 않아 감지 불가.
+      // ping 무응답 시 Dart 가 소켓을 닫아 onDone 으로 승격시킨다.
+      _socket!.pingInterval = const Duration(seconds: 30);
       _socket!.listen((dynamic data) {
         onMessage?.call(data);
+      }, onError: (Object error) {
+        logger.e('WebSocket stream error: $error');
+        _notifyClose(500, error.toString());
       }, onDone: () {
-        onClose?.call(_socket!.closeCode, _socket!.closeReason);
+        _notifyClose(_socket!.closeCode, _socket!.closeReason);
       });
     } catch (e) {
-      onClose?.call(500, e.toString());
+      _notifyClose(500, e.toString());
     }
   }
 
